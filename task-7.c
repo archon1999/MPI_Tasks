@@ -1,9 +1,13 @@
+/*
+    При компиляции добавить аргумент -lm
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <mpi.h>
 #include <math.h>
 
+const int ROOT = 0;
 
 int main(int argc, char *argv[]){
     int errCode;
@@ -17,11 +21,11 @@ int main(int argc, char *argv[]){
     MPI_Comm_rank( MPI_COMM_WORLD, &rank );
     MPI_Comm_size( MPI_COMM_WORLD, &size );
 
-    int n = 100;
+    int n = 10;
     int x[n], sendcounts[size], displs[size];
     int sum_sq_x;
 
-    if( rank == 0 ){
+    if( rank == ROOT ){
         printf( "x: " );
         for( int i = 0; i < n; i++ ) {
             x[i] = i;
@@ -29,6 +33,15 @@ int main(int argc, char *argv[]){
             printf( "%d", x[i] );
         }
         printf( "\n" );
+
+        for( int i = 0; i < size; i++ ){
+            displs[i] = 0;
+            sendcounts[i] = n / size;
+            if( n % size >= i + 1 ){
+                sendcounts[i]++;
+            }
+            if( i ) displs[i] = displs[i - 1] + sendcounts[i - 1];
+        }
     }
 
     int local_sum = 0, global_sum = 0;
@@ -37,16 +50,18 @@ int main(int argc, char *argv[]){
         recvcount++;
     }
     int *buf = malloc( sizeof( int ) * recvcount );
-    MPI_Scatterv( x, sendcounts, displs, MPI_INT, buf, recvcount, MPI_INT, 0, MPI_COMM_WORLD );
+ 
+    MPI_Scatterv( x, sendcounts, displs, MPI_INT, buf, recvcount, MPI_INT, ROOT, MPI_COMM_WORLD );
+
     for( int i = 0; i < recvcount; i++ ) {
         local_sum += buf[i] * buf[i];
     }
 
-    MPI_Reduce( &local_sum, &global_sum, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD );
+    MPI_Reduce( &local_sum, &global_sum, 1, MPI_INT, MPI_SUM, ROOT, MPI_COMM_WORLD );
 
     if( rank == 0 ){
-        double norm = global_sum;
-        printf( "%.2f\n", norm );
+        double norm = sqrt( global_sum );
+        printf( "|x| = %.2f\n", norm );
     }
 
     free( buf );
